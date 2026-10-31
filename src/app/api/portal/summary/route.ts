@@ -1,13 +1,33 @@
 import { NextRequest } from "next/server";
-import { ok, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
+import { ok, fail, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
 import { MOCK_INVOICES } from "@/mocks/invoices";
 import { MOCK_SUBSCRIPTIONS } from "@/mocks/subscriptions";
+import { subscriptionLifecycle } from "@/modules/subscriptions";
 
 export async function GET(req: NextRequest) {
   try {
     await applyMockDelay();
     const user = assertAuth(req, ["customer"]);
-    const customerId = user.customerId || "cust_acme_retail";
+    const isMock = process.env.MOCK_API === "true";
+    const customerId = isMock ? user.customerId || "cust_acme_retail" : user.customerId;
+    if (!customerId) return fail("FORBIDDEN", "No customer linked to this account", 403);
+
+    if (!isMock) {
+      const { items } = await subscriptionLifecycle.list({ customerId, page: 1, pageSize: 100 });
+      const active = items.filter((s) => s.status === "active");
+      // Invoices real hone par (Dev A merge ke baad) yahan jodenge
+      return ok({
+        customerId,
+        customerName: user.name,
+        activeSubscriptionsCount: active.length,
+        totalMonthlySpendMinor: active.reduce((sum, s) => sum + (s.totalRecurringMinor ?? 0), 0),
+        outstandingInvoicesCount: 0,
+        totalOutstandingMinor: 0,
+        recentInvoices: [],
+        subscriptions: items,
+      });
+    }
+
     const subs = MOCK_SUBSCRIPTIONS.filter((s) => s.customerId === customerId);
     const invs = MOCK_INVOICES.filter((i) => i.customerId === customerId);
 
