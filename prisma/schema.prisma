@@ -63,8 +63,9 @@ model Customer {
 // ------------------------------------------------------------------------------
 
 enum BillingInterval {
+  DAILY
+  WEEKLY
   MONTHLY
-  QUARTERLY
   ANNUALLY
 }
 
