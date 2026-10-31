@@ -24,6 +24,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed/index.ts",
     "db:seed:catalog": "tsx prisma/seed/seed-catalog.ts",
+    "db:seed:subscriptions": "tsx prisma/seed/seed-subscriptions.ts",
     "db:seed:billing": "tsx prisma/seed/seed-billing.ts",
     "db:seed:bulk": "tsx prisma/seed/seed-bulk.ts",
     "billing:run": "tsx scripts/run-billing.ts",
