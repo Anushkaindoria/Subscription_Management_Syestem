@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from "jose";
+import { createHmac, timingSafeEqual } from "crypto";
 
 export const SESSION_COOKIE = "loopos_session";
 const SESSION_HOURS = 8;
@@ -10,54 +10,84 @@ export type SessionPayload = {
   customerId: string | null;
 };
 
-// Secret .env se aata hai. Chhota ya missing ho to turant error.
-function getKey(): Uint8Array {
+// Secret .env se aata hai. Missing ya chhota ho to turant error.
+function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error("AUTH_SECRET missing hai ya 32 chars se chhota hai");
   }
-  return new TextEncoder().encode(secret);
+  return secret;
 }
 
-// Token banao: user ki info ko sign karke ek string bana deta hai
-export async function signSession(payload: SessionPayload): Promise<string> {
-  return new SignJWT({
-    email: payload.email,
-    role: payload.role,
-    customerId: payload.customerId,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(payload.userId)
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_HOURS}h`)
-    .sign(getKey());
+function b64url(input: Buffer | string): string {
+  return Buffer.from(input).toString("base64url");
+}
+
+// Signature banane ka kaam: data + secret se HMAC-SHA256
+function hmac(data: string, secret: string): Buffer {
+  return createHmac("sha256", secret).update(data).digest();
+}
+
+// Token banao: header.body.signature (standard JWT format)
+export function signSession(payload: SessionPayload): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = b64url(
+    JSON.stringify({
+      sub: payload.userId,
+      email: payload.email,
+      role: payload.role,
+      customerId: payload.customerId,
+      iat: now,
+      exp: now + SESSION_HOURS * 60 * 60,
+    })
+  );
+  const data = `${header}.${body}`;
+  return `${data}.${b64url(hmac(data, getSecret()))}`;
 }
 
 // Token check karo: sahi hai to payload, warna null
-export async function verifySession(
+export function verifySession(
   token: string | undefined | null
-): Promise<SessionPayload | null> {
+): SessionPayload | null {
   if (!token) return null;
-  const key = getKey(); // try ke bahar, taaki config error chhup na jaye
+  const secret = getSecret(); // try ke bahar, taaki config error chhup na jaye
+
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [header, body, signature] = parts;
+
+  // Signature match karo (timingSafeEqual: timing attack se bachav)
+  const expected = hmac(`${header}.${body}`, secret);
+  const given = Buffer.from(signature, "base64url");
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    return null; // tampered token
+  }
+
   try {
-    const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
-    const role = payload.role;
+    const h = JSON.parse(Buffer.from(header, "base64url").toString());
+    if (h.alg !== "HS256") return null;
+
+    const p = JSON.parse(Buffer.from(body, "base64url").toString());
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof p.exp !== "number" || p.exp < now) return null; // expired
+
+    const role = p.role;
     if (
-      !payload.sub ||
-      typeof payload.email !== "string" ||
+      typeof p.sub !== "string" ||
+      typeof p.email !== "string" ||
       (role !== "admin" && role !== "staff" && role !== "customer")
     ) {
       return null;
     }
     return {
-      userId: payload.sub,
-      email: payload.email,
+      userId: p.sub,
+      email: p.email,
       role,
-      customerId:
-        typeof payload.customerId === "string" ? payload.customerId : null,
+      customerId: typeof p.customerId === "string" ? p.customerId : null,
     };
   } catch {
-    return null; // expired ya tampered token
+    return null;
   }
 }
 
