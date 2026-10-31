@@ -74,10 +74,11 @@ export class SubscriptionRepository {
     });
   }
 
+  // basePrice: server-side price calculation ke liye (client ka unitPrice trust nahi hota).
   async findPlan(id: string) {
     return await db.plan.findUnique({
       where: { id },
-      select: { id: true, name: true, active: true },
+      select: { id: true, name: true, active: true, basePrice: true },
     });
   }
 

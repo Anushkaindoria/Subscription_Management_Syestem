@@ -5,6 +5,7 @@
  * DRAFT -> QUOTATION -> CONFIRMED -> ACTIVE -> CLOSED
  * pause / resume: isPaused flag (status Active hi rehta hai).
  * renew: abhi "not supported yet".
+ * Price: line ka unitPrice server decide karta hai (plan.basePrice); client ka bheja ignore hota hai.
  */
 
 import type { z } from "zod";
@@ -148,9 +149,6 @@ export class SubscriptionLifecycle {
           "Line discounts are applied by billing, not on subscription lines.",
         );
       }
-      if (line.unitPrice < 0) {
-        throw new ValidationError("unitPrice cannot be negative.");
-      }
     }
 
     const customer = await subscriptionRepo.findCustomer(input.customerId);
@@ -176,7 +174,8 @@ export class SubscriptionLifecycle {
         productId: l.productId,
         planId: input.planId,
         quantity: l.quantity ?? 1,
-        unitPrice: l.unitPrice,
+        // Server-side price: plan ka basePrice (client ka unitPrice ignore)
+        unitPrice: plan.basePrice,
       })),
     });
     return toDto(created);

@@ -63,7 +63,12 @@ const validInput = {
 
 function happyCreateMocks() {
   repo.findCustomer.mockResolvedValue({ id: "cust_1", name: "Acme Retail Pvt Ltd" } as never);
-  repo.findPlan.mockResolvedValue({ id: "plan_1", name: "Starter Monthly", active: true } as never);
+  repo.findPlan.mockResolvedValue({
+    id: "plan_1",
+    name: "Starter Monthly",
+    active: true,
+    basePrice: 149900,
+  } as never);
   repo.findProducts.mockResolvedValue([{ id: "prod_1" }] as never);
   repo.createDraft.mockResolvedValue(makeRecord() as never);
 }
@@ -89,6 +94,17 @@ describe("subscription create (real)", () => {
     expect(arg.lines[0].planId).toBe("plan_1");
     expect(arg.paymentTerms).toBe(0);
     expect(typeof arg.year).toBe("number");
+  });
+
+  it("uses the plan basePrice and ignores the unitPrice sent by the client", async () => {
+    happyCreateMocks();
+    await subscriptionLifecycle.create({
+      ...validInput,
+      lines: [{ productId: "prod_1", quantity: 3, unitPrice: 1, discountPercent: 0 }],
+    });
+    const arg = repo.createDraft.mock.calls[0][0];
+    expect(arg.lines[0].unitPrice).toBe(149900);
+    expect(arg.lines[0].quantity).toBe(3);
   });
 
   it("returns the stored SUB number and maps paymentTerms days to text", async () => {
@@ -122,7 +138,12 @@ describe("subscription create (real)", () => {
 
   it("rejects an inactive plan", async () => {
     happyCreateMocks();
-    repo.findPlan.mockResolvedValue({ id: "plan_1", name: "Old", active: false } as never);
+    repo.findPlan.mockResolvedValue({
+      id: "plan_1",
+      name: "Old",
+      active: false,
+      basePrice: 100,
+    } as never);
     await expect(subscriptionLifecycle.create(validInput)).rejects.toBeInstanceOf(
       BusinessRuleError,
     );
