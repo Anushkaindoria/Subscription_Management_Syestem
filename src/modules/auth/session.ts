@@ -6,6 +6,7 @@ const SESSION_HOURS = 8;
 export type SessionPayload = {
   userId: string;
   email: string;
+  name: string;
   role: "admin" | "staff" | "customer";
   customerId: string | null;
 };
@@ -36,6 +37,7 @@ export function signSession(payload: SessionPayload): string {
     JSON.stringify({
       sub: payload.userId,
       email: payload.email,
+      name: payload.name,
       role: payload.role,
       customerId: payload.customerId,
       iat: now,
@@ -76,6 +78,7 @@ export function verifySession(
     if (
       typeof p.sub !== "string" ||
       typeof p.email !== "string" ||
+      typeof p.name !== "string" ||
       (role !== "admin" && role !== "staff" && role !== "customer")
     ) {
       return null;
@@ -83,6 +86,7 @@ export function verifySession(
     return {
       userId: p.sub,
       email: p.email,
+      name: p.name,
       role,
       customerId: typeof p.customerId === "string" ? p.customerId : null,
     };
