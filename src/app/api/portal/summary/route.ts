@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
+import { listCustomerInvoices } from "@/app/api/_lib/portal-invoice-access";
+import { isOutstanding, toPortalInvoice } from "@/app/api/_lib/portal-invoice-mapper";
 import { MOCK_INVOICES } from "@/mocks/invoices";
 import { MOCK_SUBSCRIPTIONS } from "@/mocks/subscriptions";
 import { subscriptionLifecycle } from "@/modules/subscriptions";
@@ -13,17 +15,21 @@ export async function GET(req: NextRequest) {
     if (!customerId) return fail("FORBIDDEN", "No customer linked to this account", 403);
 
     if (!isMock) {
-      const { items } = await subscriptionLifecycle.list({ customerId, page: 1, pageSize: 100 });
+      const [{ items }, invoices] = await Promise.all([
+        subscriptionLifecycle.list({ customerId, page: 1, pageSize: 100 }),
+        listCustomerInvoices(customerId),
+      ]);
       const active = items.filter((s) => s.status === "active");
-      // Invoices real hone par (Dev A merge ke baad) yahan jodenge
+      const portalInvoices = invoices.map((i) => toPortalInvoice(i, customerId));
+      const outstanding = portalInvoices.filter(isOutstanding);
       return ok({
         customerId,
         customerName: user.name,
         activeSubscriptionsCount: active.length,
         totalMonthlySpendMinor: active.reduce((sum, s) => sum + (s.totalRecurringMinor ?? 0), 0),
-        outstandingInvoicesCount: 0,
-        totalOutstandingMinor: 0,
-        recentInvoices: [],
+        outstandingInvoicesCount: outstanding.length,
+        totalOutstandingMinor: outstanding.reduce((sum, i) => sum + i.balanceMinor, 0),
+        recentInvoices: portalInvoices.slice(0, 5),
         subscriptions: items,
       });
     }
