@@ -8,6 +8,7 @@
 
 import { DashboardMetricsDTO, RevenueReportDTO, OutstandingReportDTO } from "@/contracts";
 import { config } from "@/lib/config";
+import { clock } from "@/lib/clock";
 import { reportRepo } from "./repo";
 
 const MOCK_METRICS: DashboardMetricsDTO = {
@@ -87,17 +88,42 @@ export class ReportService {
       };
     }
 
-    const activeCount = await reportRepo.countActiveSubscriptions();
-    const outstanding = await reportRepo.sumOutstandingInvoices();
-    const duration = Date.now() - startTime;
+    const now = clock.now();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const [activeCount, subs, open, paidThisMonth] = await Promise.all([
+      reportRepo.countActiveSubscriptions(),
+      reportRepo.activeSubscriptionLines(),
+      reportRepo.openInvoices(),
+      reportRepo.sumPaymentsSince(monthStart),
+    ]);
+
+    // MRR: every active subscription normalised to one month (integer paise)
+    const mrr = subs.reduce((sum, s) => {
+      const perCycle = s.lines.reduce(
+        (a, l) => a + (l.unitPrice + (l.variant?.priceExtra ?? 0)) * l.quantity,
+        0,
+      );
+      const monthly =
+        s.renewalInterval === "DAILY"
+          ? perCycle * 30
+          : s.renewalInterval === "WEEKLY"
+            ? Math.round((perCycle * 52) / 12)
+            : s.renewalInterval === "ANNUALLY"
+              ? Math.round(perCycle / 12)
+              : perCycle;
+      return sum + monthly;
+    }, 0);
+
+    const outstanding = open.reduce((s, i) => s + (i.totalAmount - i.paidAmount), 0);
+    const overdueCount = open.filter((i) => i.dueDate < now).length;
 
     return {
       activeSubscriptionsCount: activeCount,
-      monthlyRecurringRevenueMinor: 0,
+      monthlyRecurringRevenueMinor: mrr,
       totalOutstandingMinor: outstanding,
-      overdueInvoicesCount: 0,
-      paidThisMonthMinor: 0,
-      benchmarkQueryDurationMs: duration,
+      overdueInvoicesCount: overdueCount,
+      paidThisMonthMinor: paidThisMonth,
+      benchmarkQueryDurationMs: Date.now() - startTime,
     };
   }
 
@@ -116,7 +142,20 @@ export class ReportService {
     if (config.isMockApi) {
       return MOCK_OUTSTANDING;
     }
-    return MOCK_OUTSTANDING;
+    const now = clock.now();
+    const open = await reportRepo.openInvoices();
+    const items = open.map((i) => ({
+      invoiceId: i.id,
+      invoiceNumber: i.invoiceNumber,
+      customerName: i.subscription.customer.name,
+      amountMinor: i.totalAmount - i.paidAmount,
+      daysOverdue: Math.max(0, Math.floor((now.getTime() - i.dueDate.getTime()) / 86400000)),
+      dueDate: i.dueDate.toISOString(),
+    }));
+    return {
+      totalOutstandingMinor: items.reduce((s, i) => s + i.amountMinor, 0),
+      items,
+    };
   }
 }
 

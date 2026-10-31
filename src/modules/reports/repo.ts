@@ -8,27 +8,43 @@ import { db } from "@/lib/db";
 
 export class ReportRepository {
   async countActiveSubscriptions(): Promise<number> {
-    try {
-      return await db.subscription.count({
-        where: { status: "ACTIVE" },
-      });
-    } catch {
-      return 0;
-    }
+    return await db.subscription.count({ where: { status: "ACTIVE" } });
   }
 
-  async sumOutstandingInvoices(): Promise<number> {
-    try {
-      const result = await db.invoice.aggregate({
-        where: { status: "CONFIRMED" },
-        _sum: { totalAmount: true, paidAmount: true },
-      });
-      const total = result._sum?.totalAmount || 0;
-      const paid = result._sum?.paidAmount || 0;
-      return total - paid;
-    } catch {
-      return 0;
-    }
+  async activeSubscriptionLines() {
+    return await db.subscription.findMany({
+      where: { status: "ACTIVE" },
+      select: {
+        renewalInterval: true,
+        lines: {
+          select: { quantity: true, unitPrice: true, variant: { select: { priceExtra: true } } },
+        },
+      },
+    });
+  }
+
+  /** Confirmed invoices that still have money outstanding. */
+  async openInvoices() {
+    const rows = await db.invoice.findMany({
+      where: { status: "CONFIRMED" },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        totalAmount: true,
+        paidAmount: true,
+        dueDate: true,
+        subscription: { select: { customer: { select: { name: true } } } },
+      },
+    });
+    return rows.filter((r) => r.totalAmount > r.paidAmount);
+  }
+
+  async sumPaymentsSince(from: Date): Promise<number> {
+    const res = await db.payment.aggregate({
+      where: { status: "SUCCEEDED", createdAt: { gte: from } },
+      _sum: { amount: true },
+    });
+    return res._sum.amount ?? 0;
   }
 }
 
