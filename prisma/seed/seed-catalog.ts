@@ -64,14 +64,6 @@ export async function seedCatalog() {
       basePrice: 9900, // $99.00 / mo
     },
     {
-      id: "plan_quarterly_pro",
-      name: "Quarterly Professional (5% off)",
-      code: "PLAN-Q-PRO",
-      interval: "QUARTERLY",
-      intervalCount: 3,
-      basePrice: 28200, // $282.00 / quarter
-    },
-    {
       id: "plan_annual_enterprise",
       name: "Annual Enterprise (2 months free)",
       code: "PLAN-A-ENT",
@@ -179,7 +171,7 @@ export async function persistCatalog() {
 
     const planIds = new Map<string, string>();
     for (const p of data.plans) {
-      const interval = p.interval as "MONTHLY" | "QUARTERLY" | "ANNUALLY";
+      const interval = p.interval as "MONTHLY" | "ANNUALLY";
       const row = await prisma.plan.upsert({
         where: { code: p.code },
         create: {
