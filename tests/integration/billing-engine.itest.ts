@@ -112,4 +112,11 @@ describe("billing engine (real DB)", () => {
     expect((await db.discount.findUnique({ where: { id: ids.discountId } }))?.usageCount).toBe(0);
     expect((await db.invoice.findUniqueOrThrow({ where: { id: inv.id } })).status).toBe('CANCELLED');
   });
+
+  it('paused subscription is not billed', async () => {
+    await setup({ discountLimit: 5 });
+    await db.subscription.update({ where: { id: ids.subId }, data: { isPaused: true } });
+    await billingService.executeBillingRun({ asOfDate: '2026-01-31T00:00:00.000Z', dryRun: false });
+    expect(await db.invoice.count({ where: { subscriptionId: ids.subId } })).toBe(0);
+  });
 });
