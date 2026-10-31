@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 type FakeInvoice = {
   id: string;
@@ -13,8 +13,14 @@ const store = vi.hoisted(() => ({
   payments: [] as { amount: number; method: string }[],
 }));
 
+const recompute = vi.hoisted(() => vi.fn(async (id: string) => ({ id })));
+
 vi.mock("@/lib/config", () => ({
   config: { isMockApi: false, isProduction: false, port: 3000, jwtSecret: "x", databaseUrl: "" },
+}));
+
+vi.mock("@/modules/invoices", () => ({
+  invoiceService: { recomputePaid: recompute },
 }));
 
 vi.mock("../repo", () => ({
@@ -64,6 +70,7 @@ describe("Payments (real mode, fake DB)", () => {
   beforeEach(() => {
     store.invoices.clear();
     store.payments.length = 0;
+    recompute.mockClear();
   });
 
   it("rejects payment on a Draft invoice", async () => {
@@ -86,6 +93,7 @@ describe("Payments (real mode, fake DB)", () => {
       paymentService.recordPayment({ invoiceId: "inv43", amount: 176883, method: "upi" }),
     ).rejects.toBeInstanceOf(BusinessRuleError);
     expect(store.payments.length).toBe(0);
+    expect(recompute).not.toHaveBeenCalled();
   });
 
   it("unknown invoice gives NotFound", async () => {
@@ -111,6 +119,26 @@ describe("Payments (real mode, fake DB)", () => {
     seed();
     await paymentService.recordPayment({ invoiceId: "inv43", amount: 1000, method: "card" });
     await paymentService.recordPayment({ invoiceId: "inv43", amount: 1000, method: "cheque" });
-    expect(store.payments.map((p) => p.method)).toEqual(["CREDIT_CARD", "BANK_TRANSFER"]);
+    expect(store.payments.map((p) => p.method)).toEqual(["CREDIT_CARD", "CHEQUE"]);
+  });
+
+  it("calls invoiceService.recomputePaid after every recorded payment", async () => {
+    seed();
+    await paymentService.recordPayment({ invoiceId: "inv43", amount: 1000, method: "upi" });
+    await paymentService.recordPayment({ invoiceId: "inv43", amount: 2000, method: "cash" });
+    expect(recompute).toHaveBeenCalledTimes(2);
+    expect(recompute).toHaveBeenCalledWith("inv43");
+  });
+
+  it("still returns the receipt when recomputePaid fails", async () => {
+    seed();
+    recompute.mockRejectedValueOnce(new Error("boom"));
+    const receipt = await paymentService.recordPayment({
+      invoiceId: "inv43",
+      amount: 1000,
+      method: "upi",
+    });
+    expect(receipt.payment.amount).toBe(1000);
+    expect(store.payments.length).toBe(1);
   });
 });

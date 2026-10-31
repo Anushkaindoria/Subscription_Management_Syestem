@@ -8,6 +8,7 @@ vi.mock("../repo", () => ({
     createDraft: vi.fn(),
     findById: vi.fn(),
     transitionStatus: vi.fn(),
+    setPaused: vi.fn(),
     listPage: vi.fn(),
   },
 }));
@@ -26,8 +27,11 @@ const repo = vi.mocked(subscriptionRepo);
 function makeRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: "clsub000000001abcd",
+    number: null,
     customerId: "cust_1",
     status: "DRAFT",
+    isPaused: false,
+    paymentTerms: 0,
     startDate: new Date("2026-11-01T00:00:00.000Z"),
     endDate: new Date("2027-10-31T00:00:00.000Z"),
     nextBillingDate: null,
@@ -41,7 +45,7 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
         quantity: 2,
         unitPrice: 149900,
         product: { name: "Brightloop CRM Suite" },
-        plan: { name: "Starter Monthly" },
+        plan: { name: "Starter Monthly", pausable: true },
       },
     ],
     ...overrides,
@@ -77,10 +81,37 @@ describe("subscription create (real)", () => {
     expect(dto.number).toBe("SUB-2026-ABCD");
     expect(dto.totalRecurringMinor).toBe(299800);
     expect(dto.planId).toBe("plan_1");
+    expect(dto.paymentTerms).toBe("Immediate");
+    expect(dto.isPaused).toBe(false);
 
     const arg = repo.createDraft.mock.calls[0][0];
     expect(arg.startDate).toBeInstanceOf(Date);
     expect(arg.lines[0].planId).toBe("plan_1");
+    expect(arg.paymentTerms).toBe(0);
+    expect(typeof arg.year).toBe("number");
+  });
+
+  it("returns the stored SUB number and maps paymentTerms days to text", async () => {
+    happyCreateMocks();
+    repo.createDraft.mockResolvedValue(
+      makeRecord({ number: "SUB-2026-0007", paymentTerms: 30 }) as never,
+    );
+    const dto = await subscriptionLifecycle.create(validInput);
+    expect(dto.number).toBe("SUB-2026-0007");
+    expect(dto.paymentTerms).toBe("Net 30");
+  });
+
+  it("maps 'Net 30' to 30 days when saving", async () => {
+    happyCreateMocks();
+    await subscriptionLifecycle.create({ ...validInput, paymentTerms: "Net 30" });
+    expect(repo.createDraft.mock.calls[0][0].paymentTerms).toBe(30);
+  });
+
+  it("rejects unknown paymentTerms text and does not touch the database", async () => {
+    await expect(
+      subscriptionLifecycle.create({ ...validInput, paymentTerms: "Weekly" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown customer", async () => {
@@ -199,11 +230,93 @@ describe("subscription transitions (real)", () => {
     );
   });
 
-  it.each(["pause", "resume", "renew"] as const)("%s is not supported yet", async (action) => {
+  it("renew is not supported yet", async () => {
     await expect(
-      subscriptionLifecycle.transition("clsub000000001abcd", action),
+      subscriptionLifecycle.transition("clsub000000001abcd", "renew"),
     ).rejects.toBeInstanceOf(BusinessRuleError);
     expect(repo.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe("subscription pause / resume (real)", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("pause sets isPaused and keeps status active", async () => {
+    repo.findById
+      .mockResolvedValueOnce(makeRecord({ status: "ACTIVE", isPaused: false }) as never)
+      .mockResolvedValueOnce(makeRecord({ status: "ACTIVE", isPaused: true }) as never);
+    repo.setPaused.mockResolvedValue(1);
+
+    const dto = await subscriptionLifecycle.transition("clsub000000001abcd", "pause");
+    expect(dto.status).toBe("active");
+    expect(dto.isPaused).toBe(true);
+    expect(repo.setPaused).toHaveBeenCalledWith({
+      id: "clsub000000001abcd",
+      from: false,
+      to: true,
+    });
+  });
+
+  it("resume clears isPaused", async () => {
+    repo.findById
+      .mockResolvedValueOnce(makeRecord({ status: "ACTIVE", isPaused: true }) as never)
+      .mockResolvedValueOnce(makeRecord({ status: "ACTIVE", isPaused: false }) as never);
+    repo.setPaused.mockResolvedValue(1);
+
+    const dto = await subscriptionLifecycle.transition("clsub000000001abcd", "resume");
+    expect(dto.isPaused).toBe(false);
+    expect(repo.setPaused).toHaveBeenCalledWith({
+      id: "clsub000000001abcd",
+      from: true,
+      to: false,
+    });
+  });
+
+  it("cannot pause a subscription that is not active", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "CONFIRMED" }) as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "pause"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.setPaused).not.toHaveBeenCalled();
+  });
+
+  it("cannot pause twice", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "ACTIVE", isPaused: true }) as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "pause"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.setPaused).not.toHaveBeenCalled();
+  });
+
+  it("cannot resume a subscription that is not paused", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "ACTIVE", isPaused: false }) as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "resume"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.setPaused).not.toHaveBeenCalled();
+  });
+
+  it("blocks pause when the plan is not pausable", async () => {
+    const base = makeRecord({ status: "ACTIVE" });
+    const rec = makeRecord({
+      status: "ACTIVE",
+      lines: [{ ...base.lines[0], plan: { name: "No Pause", pausable: false } }],
+    });
+    repo.findById.mockResolvedValue(rec as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "pause"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.setPaused).not.toHaveBeenCalled();
+  });
+
+  it("gives a conflict when another request changed the flag first", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "ACTIVE", isPaused: false }) as never);
+    repo.setPaused.mockResolvedValue(0);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "pause"),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 });
 

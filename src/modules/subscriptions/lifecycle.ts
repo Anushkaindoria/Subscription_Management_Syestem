@@ -3,7 +3,8 @@
  * OWNER: Dev B (@devB)
  *
  * DRAFT -> QUOTATION -> CONFIRMED -> ACTIVE -> CLOSED
- * pause / resume / renew: Dev A ke schema (isPaused) ke baad.
+ * pause / resume: isPaused flag (status Active hi rehta hai).
+ * renew: abhi "not supported yet".
  */
 
 import type { z } from "zod";
@@ -26,6 +27,9 @@ import { subscriptionRepo, type SubscriptionRecord } from "./repo";
 // Route validate karta hai, par zod ke defaults (quantity, discountPercent) optional aate hain.
 type CreateSubscriptionInput = z.input<typeof CreateSubscriptionSchema>;
 
+// Contract mein isPaused nahi hai (Dev A ka file), isliye extra field ke saath.
+export type SubscriptionView = SubscriptionDTO & { isPaused: boolean };
+
 type Rule = { from: DbStatus[]; to: DbStatus };
 
 const RULES: Partial<Record<SubscriptionAction, Rule>> = {
@@ -35,7 +39,7 @@ const RULES: Partial<Record<SubscriptionAction, Rule>> = {
   close: { from: ["DRAFT", "QUOTATION", "CONFIRMED", "ACTIVE"], to: "CLOSED" },
 };
 
-const NOT_SUPPORTED_YET: SubscriptionAction[] = ["pause", "resume", "renew"];
+const NOT_SUPPORTED_YET: SubscriptionAction[] = ["renew"];
 
 function num(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -49,12 +53,27 @@ function parseDate(value: string, field: string): Date {
   return d;
 }
 
-// Database mein number column nahi hai, isliye abhi id se banaya hua placeholder.
-function subscriptionNumber(rec: SubscriptionRecord): string {
-  return `SUB-${rec.createdAt.getUTCFullYear()}-${rec.id.slice(-4).toUpperCase()}`;
+// Contract string <-> database days: "Immediate" = 0, "Net 15" = 15.
+function termsToDays(value: string | undefined): number {
+  const v = (value ?? "Immediate").trim();
+  if (/^immediate$/i.test(v)) return 0;
+  const m = /^net\s*(\d{1,3})$/i.exec(v);
+  if (!m) {
+    throw new ValidationError(`paymentTerms '${value}' is not valid. Use "Immediate" or "Net 15".`);
+  }
+  return Number(m[1]);
 }
 
-function toDto(rec: SubscriptionRecord): SubscriptionDTO {
+function daysToTerms(days: number): string {
+  return days <= 0 ? "Immediate" : `Net ${days}`;
+}
+
+// Purani rows (number NULL) ke liye id se banaya hua placeholder.
+function subscriptionNumber(rec: SubscriptionRecord): string {
+  return rec.number ?? `SUB-${rec.createdAt.getUTCFullYear()}-${rec.id.slice(-4).toUpperCase()}`;
+}
+
+function toDto(rec: SubscriptionRecord): SubscriptionView {
   const planLine = rec.lines.find((l) => l.planId);
   const lines = rec.lines.map((l) => ({
     id: l.id,
@@ -74,11 +93,12 @@ function toDto(rec: SubscriptionRecord): SubscriptionDTO {
     planName: planLine?.plan?.name,
     startDate: rec.startDate.toISOString(),
     expiryDate: rec.endDate ? rec.endDate.toISOString() : null,
-    paymentTerms: "Immediate",
+    paymentTerms: daysToTerms(rec.paymentTerms),
     status: rec.status.toLowerCase() as ContractStatus,
     nextBillingDate: rec.nextBillingDate ? rec.nextBillingDate.toISOString() : null,
     lines,
     totalRecurringMinor: lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0),
+    isPaused: rec.isPaused,
   };
 }
 
@@ -107,7 +127,7 @@ export class SubscriptionLifecycle {
   }
 
   // customerId dene par sirf usi customer ki subscription milti hai (portal ke liye).
-  async getById(id: string, opts: { customerId?: string } = {}): Promise<SubscriptionDTO> {
+  async getById(id: string, opts: { customerId?: string } = {}): Promise<SubscriptionView> {
     const rec = await subscriptionRepo.findById(id);
     if (!rec || (opts.customerId && rec.customerId !== opts.customerId)) {
       throw new NotFoundError("Subscription", id);
@@ -115,12 +135,13 @@ export class SubscriptionLifecycle {
     return toDto(rec);
   }
 
-  async create(input: CreateSubscriptionInput): Promise<SubscriptionDTO> {
+  async create(input: CreateSubscriptionInput): Promise<SubscriptionView> {
     const start = parseDate(input.startDate, "startDate");
     const end = input.expiryDate ? parseDate(input.expiryDate, "expiryDate") : null;
     if (end && end < start) {
       throw new ValidationError("expiryDate cannot be before startDate.");
     }
+    const termsDays = termsToDays(input.paymentTerms);
     for (const line of input.lines) {
       if (line.discountPercent && line.discountPercent !== 0) {
         throw new ValidationError(
@@ -149,6 +170,8 @@ export class SubscriptionLifecycle {
       customerId: input.customerId,
       startDate: start,
       endDate: end,
+      paymentTerms: termsDays,
+      year: clock.now().getUTCFullYear(),
       lines: input.lines.map((l) => ({
         productId: l.productId,
         planId: input.planId,
@@ -159,9 +182,12 @@ export class SubscriptionLifecycle {
     return toDto(created);
   }
 
-  async transition(id: string, action: SubscriptionAction): Promise<SubscriptionDTO> {
+  async transition(id: string, action: SubscriptionAction): Promise<SubscriptionView> {
     if (NOT_SUPPORTED_YET.includes(action)) {
       throw new BusinessRuleError(`Action '${action}' is not supported yet.`);
+    }
+    if (action === "pause" || action === "resume") {
+      return this.setPaused(id, action === "pause");
     }
     const rule = RULES[action];
     if (!rule) throw new ValidationError(`Unknown action '${action}'.`);
@@ -185,6 +211,41 @@ export class SubscriptionLifecycle {
       from: current.status,
       to: rule.to,
       data,
+    });
+    if (changed === 0) {
+      throw new ConflictError("Subscription was changed by another request. Please retry.");
+    }
+
+    const updated = await subscriptionRepo.findById(id);
+    if (!updated) throw new NotFoundError("Subscription", id);
+    return toDto(updated);
+  }
+
+  // Pause/resume: status Active hi rehta hai, sirf isPaused badalta hai.
+  private async setPaused(id: string, pause: boolean): Promise<SubscriptionView> {
+    const action = pause ? "pause" : "resume";
+    const current = await subscriptionRepo.findById(id);
+    if (!current) throw new NotFoundError("Subscription", id);
+
+    if (current.status !== "ACTIVE") {
+      throw new BusinessRuleError(
+        `Cannot ${action} a subscription that is ${current.status.toLowerCase()}. Only active subscriptions can be paused or resumed.`,
+      );
+    }
+    if (pause) {
+      if (current.isPaused) throw new BusinessRuleError("Subscription is already paused.");
+      const planLine = current.lines.find((l) => l.plan);
+      if (planLine?.plan?.pausable === false) {
+        throw new BusinessRuleError("This plan cannot be paused.");
+      }
+    } else if (!current.isPaused) {
+      throw new BusinessRuleError("Subscription is not paused.");
+    }
+
+    const changed = await subscriptionRepo.setPaused({
+      id,
+      from: current.isPaused,
+      to: pause,
     });
     if (changed === 0) {
       throw new ConflictError("Subscription was changed by another request. Please retry.");

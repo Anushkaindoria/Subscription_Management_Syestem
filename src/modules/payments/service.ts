@@ -1,9 +1,10 @@
-﻿/**
+/**
  * Payments Module Service
  * OWNER: Dev B (@devB)
  *
  * Rules: payment sirf Confirmed invoice par, overpayment reject,
  * total tak pahunchte hi invoice Paid (paidAt set).
+ * Payment ke baad invoiceService.recomputePaid (Dev A) safety net ke taur par call hota hai.
  */
 
 import { RecordPaymentDTO, PaymentDTO } from "@/contracts";
@@ -11,20 +12,22 @@ import { PaymentReceipt } from "./types";
 import { config } from "@/lib/config";
 import { clock } from "@/lib/clock";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/lib/errors";
+import { invoiceService } from "@/modules/invoices";
 import { paymentRepo } from "./repo";
 
-type DbMethod = "CREDIT_CARD" | "BANK_TRANSFER" | "CASH" | "UPI";
+type DbMethod = "CHEQUE" | "CREDIT_CARD" | "BANK_TRANSFER" | "CASH" | "UPI";
 
-// Contract (lowercase) -> database enum. Database mein cheque nahi hai, isliye bank transfer.
+// Contract (lowercase) -> database enum.
 const METHOD_IN: Record<string, DbMethod> = {
   card: "CREDIT_CARD",
   credit_card: "CREDIT_CARD",
   bank_transfer: "BANK_TRANSFER",
-  cheque: "BANK_TRANSFER",
+  cheque: "CHEQUE",
   cash: "CASH",
   upi: "UPI",
 };
 const METHOD_OUT: Record<DbMethod, string> = {
+  CHEQUE: "cheque",
   CREDIT_CARD: "card",
   BANK_TRANSFER: "bank_transfer",
   CASH: "cash",
@@ -81,6 +84,13 @@ export class PaymentService {
       markPaid: fullyPaid,
       paidAt: clock.now(),
     });
+
+    // Payment pehle hi save ho chuki hai; recompute fail ho to bhi payment ka response sahi rahe.
+    try {
+      await invoiceService.recomputePaid(invoice.id);
+    } catch {
+      // Safety net only: paidAmount/status upar transaction mein pehle hi set ho chuke hain.
+    }
 
     return {
       payment: {

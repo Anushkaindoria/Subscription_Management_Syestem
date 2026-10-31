@@ -4,6 +4,7 @@
  */
 
 import { db } from "@/lib/db";
+import { ConflictError } from "@/lib/errors";
 import { Prisma, Subscription, SubscriptionStatus } from "@prisma/client";
 
 const withRelations = {
@@ -87,22 +88,49 @@ export class SubscriptionRepository {
     });
   }
 
+  // Us saal ka agla number: SUB-2026-0001, SUB-2026-0002, ...
+  private async nextNumber(year: number): Promise<string> {
+    const prefix = `SUB-${year}-`;
+    const last = await db.subscription.findFirst({
+      where: { number: { startsWith: prefix } },
+      orderBy: { number: "desc" },
+      select: { number: true },
+    });
+    const lastSeq = last?.number ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
+    const next = (Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
+    return `${prefix}${String(next).padStart(4, "0")}`;
+  }
+
+  // Number unique hai: do request ek saath aayein to clash par naya number lekar dobara try.
   async createDraft(d: {
     customerId: string;
     startDate: Date;
     endDate: Date | null;
+    paymentTerms: number;
+    year: number;
     lines: { productId: string; planId: string; quantity: number; unitPrice: number }[];
   }): Promise<SubscriptionRecord> {
-    return await db.subscription.create({
-      data: {
-        customerId: d.customerId,
-        status: "DRAFT",
-        startDate: d.startDate,
-        endDate: d.endDate,
-        lines: { create: d.lines },
-      },
-      include: withRelations,
-    });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const number = await this.nextNumber(d.year);
+      try {
+        return await db.subscription.create({
+          data: {
+            number,
+            customerId: d.customerId,
+            status: "DRAFT",
+            startDate: d.startDate,
+            endDate: d.endDate,
+            paymentTerms: d.paymentTerms,
+            lines: { create: d.lines },
+          },
+          include: withRelations,
+        });
+      } catch (err) {
+        const clash = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!clash) throw err;
+      }
+    }
+    throw new ConflictError("Could not allocate a subscription number. Please retry.");
   }
 
   // Status badlo sirf tab jab abhi bhi "from" status hi ho (race se bachne ke liye).
@@ -116,6 +144,15 @@ export class SubscriptionRepository {
     const res = await db.subscription.updateMany({
       where: { id: d.id, status: d.from },
       data: { status: d.to, ...d.data },
+    });
+    return res.count;
+  }
+
+  // Pause/resume: sirf ACTIVE subscription par, aur sirf jab isPaused abhi "from" ho.
+  async setPaused(d: { id: string; from: boolean; to: boolean }): Promise<number> {
+    const res = await db.subscription.updateMany({
+      where: { id: d.id, status: "ACTIVE", isPaused: d.from },
+      data: { isPaused: d.to },
     });
     return res.count;
   }
