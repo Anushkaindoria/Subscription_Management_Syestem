@@ -20,6 +20,10 @@ export class StaffRepository {
     });
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    return await db.user.findUnique({ where: { email } });
+  }
+
   async createStaff(data: { name: string; email: string; passwordHash: string }): Promise<User> {
     return await db.user.create({
       data: {
@@ -29,6 +33,10 @@ export class StaffRepository {
         role: Role.STAFF,
       },
     });
+  }
+
+  async updateName(id: string, name: string): Promise<User> {
+    return await db.user.update({ where: { id }, data: { name } });
   }
 }
 
