@@ -1,16 +1,28 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import {
+  ok,
+  assertAuth,
+  applyMockDelay,
+  parseAndValidate,
+  handleError,
+} from "@/app/api/_lib/handler";
 import { UpdateCustomerSchema } from "@/contracts/customer";
 import { MOCK_CUSTOMERS } from "@/mocks/customers";
+import { customerService } from "@/modules/customers";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await applyMockDelay();
     assertAuth(req, ["admin", "staff"]);
+
+    if (process.env.MOCK_API !== "true") {
+      return ok(await customerService.getCustomerById(params.id));
+    }
+
     const customer = MOCK_CUSTOMERS.find((c) => c.id === params.id) || MOCK_CUSTOMERS[0];
     return ok(customer);
-  } catch (err: any) {
-    return fail(err.code || "NOT_FOUND", err.message, 404);
+  } catch (err) {
+    return handleError(err);
   }
 }
 
@@ -19,9 +31,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     await applyMockDelay();
     assertAuth(req, ["admin", "staff"]);
     const body = await parseAndValidate(req, UpdateCustomerSchema);
-    const customer = { ...(MOCK_CUSTOMERS.find((c) => c.id === params.id) || MOCK_CUSTOMERS[0]), ...body };
+
+    if (process.env.MOCK_API !== "true") {
+      return ok(await customerService.updateCustomer(params.id, body));
+    }
+
+    const customer = {
+      ...(MOCK_CUSTOMERS.find((c) => c.id === params.id) || MOCK_CUSTOMERS[0]),
+      ...body,
+    };
     return ok(customer);
-  } catch (err: any) {
-    return fail(err.code || "UPDATE_CUSTOMER_FAILED", err.message, 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

@@ -1,35 +1,84 @@
+﻿
 /**
  * Auth Module Service
  * OWNER: Dev B (@devB)
  */
 
-import { LoginDTO, SignupDTO, ResetPasswordRequestDTO, ResetPasswordConfirmDTO, SessionUserDTO } from "@/contracts";
+import bcrypt from "bcryptjs";
+import type { User } from "@prisma/client";
+import { SessionUserDTO } from "@/contracts";
 import { AuthSession } from "./types";
 import { authRepo } from "./repo";
+import { signSession } from "./session";
+import {
+  createResetToken,
+  readResetToken,
+  fingerprint,
+} from "./reset-token";
+import { sendMail } from "./mailer";
 import { config } from "@/lib/config";
-import { UnauthorizedError, ValidationError } from "@/lib/errors";
+import {
+  UnauthorizedError,
+  ValidationError,
+  ConflictError,
+} from "@/lib/errors";
 
 const MOCK_ADMIN_USER: SessionUserDTO = {
   id: "usr_mock_admin",
   email: "admin@loopos.local",
-  name: "Admin Operator",
+  name: "Riya Sharma",
   role: "admin",
   customerId: null,
 };
 
 const MOCK_CUSTOMER_USER: SessionUserDTO = {
   id: "usr_mock_customer",
-  email: "billing@acmecorp.com",
-  name: "Alice Acme",
+  email: "billing@acmeretail.in",
+  name: "Acme Retail Admin",
   role: "customer",
-  customerId: "cust_acme_corp",
+  customerId: "cust_acme_retail",
 };
 
+// Dummy bcrypt hash prevents email enumeration through response timing.
+const DUMMY_HASH =
+  "$2a$10$CwTycUXWue0Thq9StjUM0uJ8.2sVn6O2tQ0sQ8mE1m3c9gk0oYb0e";
+
+function toSession(user: User): AuthSession {
+  const role = user.role.toLowerCase() as
+    | "admin"
+    | "staff"
+    | "customer";
+
+  const sessionUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role,
+    customerId: user.customerId,
+  } as SessionUserDTO;
+
+  return {
+    token: signSession({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role,
+      customerId: user.customerId,
+    }),
+    user: sessionUser,
+  };
+}
+
 export class AuthService {
-  async login(dto: LoginDTO): Promise<AuthSession> {
+  async login(dto: {
+    email: string;
+    password: string;
+  }): Promise<AuthSession> {
+    // Demo/mock authentication for UI testing.
     if (config.isMockApi) {
       const emailLower = (dto.email || "").toLowerCase();
-      let user: SessionUserDTO = MOCK_ADMIN_USER;
+
+      let user: SessionUserDTO;
 
       if (
         emailLower.includes("customer") ||
@@ -41,7 +90,10 @@ export class AuthService {
           ...MOCK_CUSTOMER_USER,
           email: dto.email,
         };
-      } else if (emailLower.includes("staff") || emailLower.includes("aman")) {
+      } else if (
+        emailLower.includes("staff") ||
+        emailLower.includes("aman")
+      ) {
         user = {
           id: "usr_mock_staff",
           email: dto.email,
@@ -62,25 +114,27 @@ export class AuthService {
       };
     }
 
+    // Real database authentication.
     const user = await authRepo.findByEmail(dto.email);
-    if (!user) {
+
+    const okPassword = await bcrypt.compare(
+      dto.password,
+      user ? user.passwordHash : DUMMY_HASH
+    );
+
+    if (!user || !okPassword) {
       throw new UnauthorizedError("Invalid email or password.");
     }
 
-    // Dev B: Replace with bcrypt.compare when real auth is hooked up
-    return {
-      token: `jwt_token_${user.id}`,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: (user.role.toLowerCase() as any),
-        customerId: user.customerId,
-      },
-    };
+    return toSession(user);
   }
 
-  async signup(dto: SignupDTO): Promise<AuthSession> {
+  async signup(dto: {
+    name: string;
+    email: string;
+    password: string;
+    companyName?: string;
+  }): Promise<AuthSession> {
     if (config.isMockApi) {
       return {
         token: "mock_jwt_token_new_user",
@@ -94,44 +148,102 @@ export class AuthService {
       };
     }
 
-    const existing = await authRepo.findByEmail(dto.email);
-    if (existing) {
-      throw new ValidationError("An account with this email already exists.");
+    const email = dto.email.trim().toLowerCase();
+
+    if (await authRepo.findByEmail(email)) {
+      throw new ConflictError(
+        "An account with this email already exists."
+      );
     }
 
-    // Dev B: Hash password with bcrypt
-    const created = await authRepo.createUser({
-      email: dto.email,
-      name: dto.name,
-      passwordHash: `hash_${dto.password}`,
-      role: "CUSTOMER",
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    // Signup always creates a customer.
+    const created = await authRepo.createUserWithCustomer({
+      email,
+      name: dto.name.trim(),
+      passwordHash,
+      companyName: dto.companyName,
     });
 
-    return {
-      token: `jwt_token_${created.id}`,
-      user: {
-        id: created.id,
-        email: created.email,
-        name: created.name,
-        role: (created.role.toLowerCase() as any),
-        customerId: created.customerId,
-      },
-    };
+    return toSession(created);
   }
 
-  async requestPasswordReset(dto: ResetPasswordRequestDTO): Promise<{ message: string }> {
+  async requestPasswordReset(dto: {
+    email: string;
+  }): Promise<{ message: string }> {
     if (config.isMockApi) {
-      return { message: "Mock password reset link sent to " + dto.email };
+      return {
+        message: "Mock password reset link sent to " + dto.email,
+      };
     }
-    // Dev B: generate crypto token and email via mailpit
-    return { message: "If an account exists, a reset link has been dispatched." };
+
+    const generic = {
+      message:
+        "If an account exists, a reset link has been dispatched.",
+    };
+
+    const user = await authRepo.findByEmail(dto.email);
+
+    if (!user) {
+      return generic;
+    }
+
+    const token = createResetToken(
+      user.id,
+      user.passwordHash
+    );
+
+    const base =
+      process.env.APP_URL || "http://localhost:3000";
+
+    await sendMail(
+      user.email,
+      "Reset your LoopOS password",
+      `Hi ${user.name},
+
+Reset your password (valid for 30 minutes):
+${base}/reset-password?token=${token}
+
+If you did not ask for this, ignore this email.`
+    );
+
+    return generic;
   }
 
-  async confirmPasswordReset(dto: ResetPasswordConfirmDTO): Promise<{ success: boolean }> {
+  async confirmPasswordReset(dto: {
+    token: string;
+    newPassword: string;
+  }): Promise<{ success: boolean }> {
     if (config.isMockApi) {
       return { success: true };
     }
-    // Dev B: verify token and update password in repo
+
+    const invalid = new ValidationError(
+      "Reset link is invalid or has expired."
+    );
+
+    const parsed = readResetToken(dto.token);
+
+    if (!parsed) {
+      throw invalid;
+    }
+
+    const user = await authRepo.findById(parsed.userId);
+
+    // Prevent reuse of reset tokens after password changes.
+    if (
+      !user ||
+      fingerprint(user.passwordHash) !== parsed.fp
+    ) {
+      throw invalid;
+    }
+
+    await authRepo.updatePassword(
+      user.id,
+      await bcrypt.hash(dto.newPassword, 10)
+    );
+
     return { success: true };
   }
 }

@@ -25,6 +25,8 @@ enum Role {
 }
 
 model User {
+  active       Boolean   @default(true)
+  department   String?
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
@@ -41,6 +43,7 @@ model User {
 }
 
 model Customer {
+  state     String?
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
@@ -63,12 +66,19 @@ model Customer {
 // ------------------------------------------------------------------------------
 
 enum BillingInterval {
+  DAILY
+  WEEKLY
   MONTHLY
-  QUARTERLY
   ANNUALLY
 }
 
 model Product {
+  type        String   @default("service")
+  salesPrice  Int      @default(0)
+  costPrice   Int      @default(0)
+  notes       String?
+  taxRuleId   String?
+  taxRule     TaxRule? @relation(fields: [taxRuleId], references: [id])
   id          String   @id @default(cuid())
   name        String
   code        String   @unique
@@ -83,6 +93,7 @@ model Product {
 }
 
 model Variant {
+  attribute  String   @default("Brand")
   id         String   @id @default(cuid())
   productId  String
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -100,6 +111,13 @@ model Variant {
 }
 
 model Plan {
+  minQuantity   Int             @default(1)
+  availableFrom DateTime?
+  availableTo   DateTime?
+  autoClose     Boolean         @default(false)
+  closable      Boolean         @default(true)
+  pausable      Boolean         @default(true)
+  renewable     Boolean         @default(true)
   id            String          @id @default(cuid())
   name          String
   code          String          @unique
@@ -115,6 +133,7 @@ model Plan {
 }
 
 model QuotationTemplate {
+  validityDays   Int      @default(30)
   id             String   @id @default(cuid())
   name           String
   description    String?
@@ -156,6 +175,10 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
+  number          String?            @unique
+  paymentTerms    Int                @default(15)
+  isPaused        Boolean            @default(false)
+  quoteValidUntil DateTime?
   id              String             @id @default(cuid())
   customerId      String
   customer        Customer           @relation(fields: [customerId], references: [id])
@@ -178,6 +201,8 @@ model Subscription {
 }
 
 model SubscriptionLine {
+  taxRuleId      String?
+  taxRule        TaxRule?     @relation(fields: [taxRuleId], references: [id])
   id             String       @id @default(cuid())
   subscriptionId String
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
@@ -201,16 +226,18 @@ model SubscriptionLine {
 // ------------------------------------------------------------------------------
 
 model TaxRule {
-  id                  String   @id @default(cuid())
+  products            Product[]
+  subscriptionLines   SubscriptionLine[]
+  id                  String             @id @default(cuid())
   name                String
-  code                String   @unique
+  code                String             @unique
   rateBasisPoints     Int // e.g. 1800 = 18.00%
-  isGst               Boolean  @default(false)
+  isGst               Boolean            @default(false)
   cgstRateBasisPoints Int? // e.g. 900 = 9% CGST
   sgstRateBasisPoints Int? // e.g. 900 = 9% SGST
   igstRateBasisPoints Int? // e.g. 1800 = 18% IGST
-  active              Boolean  @default(true)
-  createdAt           DateTime @default(now())
+  active              Boolean            @default(true)
+  createdAt           DateTime           @default(now())
 }
 
 enum DiscountType {
@@ -265,6 +292,7 @@ model Invoice {
   dueDate        DateTime
   paidAt         DateTime?
   pdfUrl         String?
+  discountIds    String[]      @default([])
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -293,6 +321,7 @@ model InvoiceLine {
 }
 
 enum PaymentMethod {
+  CHEQUE
   CREDIT_CARD
   BANK_TRANSFER
   CASH

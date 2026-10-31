@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import { ok, assertAuth, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { CreateQuotationTemplateSchema, QuotationTemplate } from "@/contracts/template";
 
 const MOCK_TEMPLATES: QuotationTemplate[] = [
@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
     await applyMockDelay();
     assertAuth(req, ["admin", "staff"]);
     return ok(MOCK_TEMPLATES);
-  } catch (err: any) {
-    return fail(err.code || "ERROR", err.message, err.status || 500);
+  } catch (err) {
+    return handleError(err);
   }
 }
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const body = await parseAndValidate(req, CreateQuotationTemplateSchema);
     const tmpl = { id: `tmpl_${Date.now()}`, ...body };
     return ok(tmpl, 201);
-  } catch (err: any) {
-    return fail(err.code || "CREATE_TEMPLATE_FAILED", err.message, err.status || 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

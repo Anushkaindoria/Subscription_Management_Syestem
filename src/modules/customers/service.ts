@@ -7,7 +7,21 @@ import { CustomerDTO, CreateCustomerDTO, UpdateCustomerDTO } from "./schema";
 import { CustomerRollup } from "./types";
 import { customerRepo } from "./repo";
 import { config } from "@/lib/config";
-import { NotFoundError } from "@/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+
+type CustomerRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  address: string | null;
+  taxId: string | null;
+  createdAt: Date;
+};
+
+// GSTIN: 2 digit state code + PAN (5 letters, 4 digits, 1 letter) + entity + Z + checksum
+const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 const MOCK_CUSTOMERS: CustomerDTO[] = [
   {
@@ -62,22 +76,78 @@ const MOCK_CUSTOMERS: CustomerDTO[] = [
   },
 ];
 
+function num(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function toDto(c: CustomerRow): CustomerDTO {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    company: c.company,
+    address: c.address,
+    taxId: c.taxId,
+    createdAt: c.createdAt.toISOString(),
+  };
+}
+
+// undefined = field bheja hi nahi (badalna nahi), null/"" = khaali karna.
+function cleanText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const t = value.trim();
+  return t === "" ? null : t;
+}
+
+function cleanTaxId(value: string | null | undefined): string | null | undefined {
+  const t = cleanText(value);
+  if (t === undefined || t === null) return t;
+  const upper = t.toUpperCase();
+  if (!GSTIN_PATTERN.test(upper)) {
+    throw new ValidationError("taxId must be a valid 15-character GSTIN (e.g. 07AABCA1234F1Z5).");
+  }
+  return upper;
+}
+
+function pageOf<T>(items: T[], total: number, page: number, pageSize: number) {
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
 export class CustomerService {
   async listCustomers(): Promise<CustomerDTO[]> {
     if (config.isMockApi) {
       return MOCK_CUSTOMERS;
     }
     const list = await customerRepo.listAll();
-    return list.map((c) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      phone: c.phone,
-      company: c.company,
-      address: c.address,
-      taxId: c.taxId,
-      createdAt: c.createdAt.toISOString(),
-    }));
+    return list.map(toDto);
+  }
+
+  async listPage(opts: { q?: string; page?: number; pageSize?: number }) {
+    const page = Math.max(1, num(opts.page, 1));
+    const pageSize = Math.min(100, Math.max(1, num(opts.pageSize, 25)));
+    const q = opts.q?.trim() || undefined;
+
+    if (config.isMockApi) {
+      const needle = q?.toLowerCase();
+      const all = needle
+        ? MOCK_CUSTOMERS.filter(
+            (c) => c.name.toLowerCase().includes(needle) || c.email.toLowerCase().includes(needle),
+          )
+        : MOCK_CUSTOMERS;
+      const start = (page - 1) * pageSize;
+      return pageOf(all.slice(start, start + pageSize), all.length, page, pageSize);
+    }
+
+    const { rows, total } = await customerRepo.listPage({ q, page, pageSize });
+    return pageOf(rows.map(toDto), total, page, pageSize);
   }
 
   async getCustomerById(id: string): Promise<CustomerDTO> {
@@ -88,27 +158,21 @@ export class CustomerService {
     }
     const customer = await customerRepo.findById(id);
     if (!customer) throw new NotFoundError("Customer", id);
-    return {
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      company: customer.company,
-      address: customer.address,
-      taxId: customer.taxId,
-      createdAt: customer.createdAt.toISOString(),
-    };
+    return toDto(customer);
   }
 
   async getCustomerRollup(id: string): Promise<CustomerRollup> {
     const customer = await this.getCustomerById(id);
-    return {
-      customer,
-      activeSubscriptionsCount: 2,
-      totalMrrMinor: 249800, // INR 2,498.00
-      outstandingInvoicesCount: 1,
-      totalOutstandingMinor: 116820,
-    };
+    if (config.isMockApi) {
+      return {
+        customer,
+        activeSubscriptionsCount: 2,
+        totalMrrMinor: 249800, // INR 2,498.00
+        outstandingInvoicesCount: 1,
+        totalOutstandingMinor: 116820,
+      };
+    }
+    return { customer, ...(await customerRepo.rollup(id)) };
   }
 
   async createCustomer(dto: CreateCustomerDTO): Promise<CustomerDTO> {
@@ -120,17 +184,21 @@ export class CustomerService {
       };
       return created;
     }
-    const c = await customerRepo.create(dto);
-    return {
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      phone: c.phone,
-      company: c.company,
-      address: c.address,
-      taxId: c.taxId,
-      createdAt: c.createdAt.toISOString(),
-    };
+
+    const email = dto.email.trim().toLowerCase();
+    if (await customerRepo.findByEmail(email)) {
+      throw new ConflictError("A customer with this email already exists.");
+    }
+
+    const created = await customerRepo.create({
+      name: dto.name.trim(),
+      email,
+      phone: cleanText(dto.phone),
+      company: cleanText(dto.company),
+      address: cleanText(dto.address),
+      taxId: cleanTaxId(dto.taxId),
+    });
+    return toDto(created);
   }
 
   async updateCustomer(id: string, dto: UpdateCustomerDTO): Promise<CustomerDTO> {
@@ -138,19 +206,30 @@ export class CustomerService {
       const customer = await this.getCustomerById(id);
       return { ...customer, ...dto };
     }
-    const updated = await customerRepo.update(id, dto);
-    return {
-      id: updated.id,
-      name: updated.name,
-      email: updated.email,
-      phone: updated.phone,
-      company: updated.company,
-      address: updated.address,
-      taxId: updated.taxId,
-      createdAt: updated.createdAt.toISOString(),
-    };
+
+    const existing = await customerRepo.findById(id);
+    if (!existing) throw new NotFoundError("Customer", id);
+
+    let email: string | undefined;
+    if (dto.email !== undefined) {
+      email = dto.email.trim().toLowerCase();
+      if (email !== existing.email && (await customerRepo.findByEmail(email))) {
+        throw new ConflictError("A customer with this email already exists.");
+      }
+    }
+
+    const updated = await customerRepo.update(id, {
+      name: dto.name?.trim(),
+      email,
+      phone: cleanText(dto.phone),
+      company: cleanText(dto.company),
+      address: cleanText(dto.address),
+      taxId: cleanTaxId(dto.taxId),
+    });
+    return toDto(updated);
   }
 
+  // Abhi sirf placeholder link; asli invite email baad mein.
   async sendPortalInvite(id: string): Promise<{ success: boolean; inviteUrl: string }> {
     const customer = await this.getCustomerById(id);
     return {

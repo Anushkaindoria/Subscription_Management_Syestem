@@ -1,6 +1,7 @@
-import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, paginate, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+﻿import { NextRequest } from "next/server";
+import { ok, assertAuth, paginate, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { RecordPaymentSchema, Payment } from "@/contracts/payment";
+import { paymentService } from "@/modules/payments";
 
 const MOCK_PAYMENTS: Payment[] = [
   {
@@ -24,17 +25,40 @@ export async function GET(req: NextRequest) {
     assertAuth(req, ["admin", "staff"]);
     const page = parseInt(req.nextUrl.searchParams.get("page") || "1", 10);
     const pageSize = parseInt(req.nextUrl.searchParams.get("pageSize") || "25", 10);
+    if (process.env.MOCK_API !== "true") {
+      return ok(await paymentService.listPayments(page, pageSize));
+    }
     return ok(paginate(MOCK_PAYMENTS, page, pageSize));
-  } catch (err: any) {
-    return fail(err.code || "ERROR", err.message, 500);
+  } catch (err) {
+    return handleError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     await applyMockDelay();
-    assertAuth(req, ["admin", "staff"]);
+    const user = assertAuth(req, ["admin", "staff"]);
     const body = await parseAndValidate(req, RecordPaymentSchema);
+
+    if (process.env.MOCK_API !== "true") {
+      const receipt = await paymentService.recordPayment({
+        invoiceId: body.invoiceId,
+        amount: body.amount,
+        method: body.method,
+        note: body.note,
+        recordedById: user.id,
+      });
+      return ok(
+        {
+          ...receipt.payment,
+          paidOn: body.paidOn,
+          invoiceFullyPaid: receipt.invoiceFullyPaid,
+          remainingBalanceMinor: receipt.remainingBalanceMinor,
+        },
+        201,
+      );
+    }
+
     const payment = {
       id: `pay_${Date.now()}`,
       invoiceId: body.invoiceId,
@@ -47,7 +71,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     };
     return ok(payment, 201);
-  } catch (err: any) {
-    return fail(err.code || "RECORD_PAYMENT_FAILED", err.message, 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }
