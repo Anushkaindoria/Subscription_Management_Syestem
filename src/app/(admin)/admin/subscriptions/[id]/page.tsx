@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { SubscriptionDetail } from "@/components/features/subscriptions/SubscriptionDetail";
 
-export default function Page() {
-  return <PagePlaceholder routeId="subscription-detail" />;
+export default function SubscriptionDetailPage({ params }: { params: { id: string } }) {
+  return <SubscriptionDetail id={params.id} />;
 }

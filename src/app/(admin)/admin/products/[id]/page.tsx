@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { ProductEditor } from "@/components/features/catalog/ProductEditor";
 
-export default function Page() {
-  return <PagePlaceholder routeId="product-editor" />;
+export default function ProductDetailPage({ params }: { params: { id: string } }) {
+  return <ProductEditor productId={params.id} />;
 }

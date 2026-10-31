@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { CustomersList } from "@/components/features/customers/CustomersList";
 
-export default function Page() {
-  return <PagePlaceholder routeId="customers-list" />;
+export default function CustomersPage() {
+  return <CustomersList />;
 }

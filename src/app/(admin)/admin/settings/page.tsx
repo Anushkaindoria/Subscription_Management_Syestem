@@ -1,5 +1,10 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import { SettingsConsole } from "@/components/features/settings/SettingsConsole";
 
-export default function Page() {
-  return <PagePlaceholder routeId="settings" />;
+export const metadata = {
+  title: "Settings | LoopOS",
+  description: "Configure legal entity metadata, sequence numbering prefixes, and dunning rules.",
+};
+
+export default function SettingsPage() {
+  return <SettingsConsole />;
 }

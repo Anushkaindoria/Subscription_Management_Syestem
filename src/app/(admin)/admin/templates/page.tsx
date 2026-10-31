@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { TemplatesList } from "@/components/features/catalog/TemplatesList";
 
-export default function Page() {
-  return <PagePlaceholder routeId="quotation-templates" />;
+export default function TemplatesPage() {
+  return <TemplatesList />;
 }

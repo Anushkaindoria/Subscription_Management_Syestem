@@ -1,37 +1,38 @@
 import React from "react";
 import { STATUS_PILL_CONFIG } from "./status-pill.config";
+import { cn } from "@/lib/utils";
 
 export interface StatusPillProps {
   status: string;
+  className?: string;
 }
 
-export const StatusPill: React.FC<StatusPillProps> = ({ status }) => {
-  const cfg = STATUS_PILL_CONFIG[status.toLowerCase()] || {
-    label: status,
-    color: "#94a3b8",
-    bg: "rgba(148, 163, 184, 0.12)",
-    border: "rgba(148, 163, 184, 0.25)",
-    iconDotColor: "#94a3b8",
+export const StatusPill: React.FC<StatusPillProps> = ({ status, className }) => {
+  const normalized = (status || "").toLowerCase();
+  const cfg = STATUS_PILL_CONFIG[normalized] || {
+    label: status || "Unknown",
+    color: "#64748b",
+    bg: "rgba(100, 116, 139, 0.12)",
+    border: "rgba(100, 116, 139, 0.25)",
+    iconDotColor: "#64748b",
   };
 
   return (
     <span
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider select-none",
+        className
+      )}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
-        padding: "3px 10px",
-        borderRadius: "9999px",
-        fontSize: "0.75rem",
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.03em",
         color: cfg.color,
-        background: cfg.bg,
+        backgroundColor: cfg.bg,
         border: `1px solid ${cfg.border}`,
       }}
     >
-      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: cfg.iconDotColor }} />
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ backgroundColor: cfg.iconDotColor }}
+      />
       {cfg.label}
     </span>
   );

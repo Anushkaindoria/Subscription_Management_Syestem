@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { CustomerDetail } from "@/components/features/customers/CustomerDetail";
 
-export default function Page() {
-  return <PagePlaceholder routeId="customer-detail" />;
+export default function CustomerDetailPage({ params }: { params: { id: string } }) {
+  return <CustomerDetail customerId={params.id} />;
 }

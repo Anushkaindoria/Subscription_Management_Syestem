@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { DashboardOverview } from "@/components/features/dashboard/DashboardOverview";
 
-export default function Page() {
-  return <PagePlaceholder routeId="dashboard" />;
+export default function AdminDashboardPage() {
+  return <DashboardOverview />;
 }

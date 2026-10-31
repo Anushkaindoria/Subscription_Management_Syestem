@@ -1,5 +1,10 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import { PortalHome } from "@/components/features/portal/PortalHome";
 
-export default function Page() {
-  return <PagePlaceholder routeId="portal-home" />;
+export const metadata = {
+  title: "Customer Portal | LoopOS",
+  description: "View active subscriptions, itemized billing, and instant payment settlement.",
+};
+
+export default function PortalPage() {
+  return <PortalHome />;
 }

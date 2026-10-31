@@ -29,3 +29,16 @@ export const MOCK_STAFF_MEMBERS: Staff[] = [
     createdAt: "2026-02-01T00:00:00.000Z",
   },
 ];
+
+export const MOCK_USERS = [
+  {
+    id: "usr_admin_riya",
+    name: "Riya Sharma",
+    email: "riya.sharma@loopos.local",
+    role: "admin",
+    active: true,
+    department: "Executive Admin",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  ...MOCK_STAFF_MEMBERS,
+];

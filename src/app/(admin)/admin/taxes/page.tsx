@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { TaxRulesList } from "@/components/features/taxes/TaxRulesList";
 
-export default function Page() {
-  return <PagePlaceholder routeId="tax-rules" />;
+export default function TaxesPage() {
+  return <TaxRulesList />;
 }
