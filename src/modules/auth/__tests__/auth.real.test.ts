@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
 type FakeUser = {
@@ -175,8 +175,11 @@ describe("assertAuth: 401 / 403 (real mode)", () => {
   });
 
   it("tampered signature gives 401", () => {
-    const t = tokenFor("admin");
-    const bad = t.replace(/.$/, (c) => (c === "A" ? "B" : "A"));
+    // Signature ka PEHLA character badlo: us par poore 6 bits lagte hain, to signature hamesha badalta hai.
+    // (Aakhri character kabhi-kabhi same bytes deta tha, isliye test flaky tha.)
+    const [h, b, s] = tokenFor("admin").split(".");
+    const first = s[0] === "A" ? "B" : "A";
+    const bad = [h, b, first + s.slice(1)].join(".");
     expect(statusOf(() => assertAuth(fakeReq({ cookie: bad })))).toBe(401);
   });
 
