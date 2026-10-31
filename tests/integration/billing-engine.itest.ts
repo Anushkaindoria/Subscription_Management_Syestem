@@ -8,6 +8,7 @@ vi.mock("@/lib/config", async (importOriginal) => {
 
 import { db } from "@/lib/db";
 import { billingService } from "@/modules/billing";
+import { invoiceService } from "@/modules/invoices";
 
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const tag = () => Math.random().toString(36).slice(2, 8);
@@ -100,5 +101,15 @@ describe("billing engine (real DB)", () => {
     expect(invoices[1].discountAmount).toBe(0); // limit of 1 already used
     const disc = await db.discount.findUnique({ where: { id: ids.discountId } });
     expect(disc?.usageCount).toBe(1);
+  });
+
+  it('cancel returns discount usage', async () => {
+    await setup({ discountLimit: 5 });
+    await billingService.executeBillingRun({ asOfDate: '2026-01-31T00:00:00.000Z', dryRun: false });
+    const inv = await db.invoice.findFirstOrThrow({ where: { subscriptionId: ids.subId } });
+    expect((await db.discount.findUnique({ where: { id: ids.discountId } }))?.usageCount).toBe(1);
+    await invoiceService.transitionStatus(inv.id, 'VOID');
+    expect((await db.discount.findUnique({ where: { id: ids.discountId } }))?.usageCount).toBe(0);
+    expect((await db.invoice.findUniqueOrThrow({ where: { id: inv.id } })).status).toBe('CANCELLED');
   });
 });
