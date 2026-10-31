@@ -4,7 +4,7 @@
  *
  * DRAFT -> QUOTATION -> CONFIRMED -> ACTIVE -> CLOSED
  * pause / resume: isPaused flag (status Active hi rehta hai).
- * renew: abhi "not supported yet".
+ * renew: ACTIVE subscription ki endDate ek renewalInterval aage (nextBillingDate/number untouched).
  * Price: line ka unitPrice server decide karta hai (plan.basePrice); client ka bheja ignore hota hai.
  */
 
@@ -16,6 +16,7 @@ import type {
   SubscriptionAction,
   CreateSubscriptionSchema,
 } from "@/contracts/subscription";
+import { addPeriods } from "@/lib/billing-period";
 import { clock } from "@/lib/clock";
 import {
   BusinessRuleError,
@@ -39,8 +40,6 @@ const RULES: Partial<Record<SubscriptionAction, Rule>> = {
   activate: { from: ["CONFIRMED"], to: "ACTIVE" },
   close: { from: ["DRAFT", "QUOTATION", "CONFIRMED", "ACTIVE"], to: "CLOSED" },
 };
-
-const NOT_SUPPORTED_YET: SubscriptionAction[] = ["renew"];
 
 function num(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -182,8 +181,8 @@ export class SubscriptionLifecycle {
   }
 
   async transition(id: string, action: SubscriptionAction): Promise<SubscriptionView> {
-    if (NOT_SUPPORTED_YET.includes(action)) {
-      throw new BusinessRuleError(`Action '${action}' is not supported yet.`);
+    if (action === "renew") {
+      return this.renew(id);
     }
     if (action === "pause" || action === "resume") {
       return this.setPaused(id, action === "pause");
@@ -210,6 +209,41 @@ export class SubscriptionLifecycle {
       from: current.status,
       to: rule.to,
       data,
+    });
+    if (changed === 0) {
+      throw new ConflictError("Subscription was changed by another request. Please retry.");
+    }
+
+    const updated = await subscriptionRepo.findById(id);
+    if (!updated) throw new NotFoundError("Subscription", id);
+    return toDto(updated);
+  }
+
+  // Renew: endDate ek renewalInterval aage. nextBillingDate / number kabhi nahi badalte.
+  private async renew(id: string): Promise<SubscriptionView> {
+    const current = await subscriptionRepo.findById(id);
+    if (!current) throw new NotFoundError("Subscription", id);
+
+    if (current.status !== "ACTIVE") {
+      throw new BusinessRuleError(
+        `Cannot renew a subscription that is ${current.status.toLowerCase()}. Only active subscriptions can be renewed.`,
+      );
+    }
+    const planLine = current.lines.find((l) => l.plan);
+    if (planLine?.plan?.renewable === false) {
+      throw new BusinessRuleError("This plan cannot be renewed.");
+    }
+    if (!current.endDate) {
+      throw new BusinessRuleError(
+        "This subscription has no end date, so there is nothing to renew.",
+      );
+    }
+
+    const newEnd = addPeriods(current.endDate, current.renewalInterval, 1);
+    const changed = await subscriptionRepo.extendEndDate({
+      id,
+      from: current.endDate,
+      to: newEnd,
     });
     if (changed === 0) {
       throw new ConflictError("Subscription was changed by another request. Please retry.");

@@ -157,6 +157,16 @@ export class SubscriptionRepository {
     });
     return res.count;
   }
+
+  // Renew: sirf endDate aage badhta hai. nextBillingDate aur number ko yahan touch nahi karte
+  // (billing engine / invoices Dev A ke hain). Sirf tab badlo jab endDate abhi bhi "from" ho.
+  async extendEndDate(d: { id: string; from: Date; to: Date }): Promise<number> {
+    const res = await db.subscription.updateMany({
+      where: { id: d.id, status: "ACTIVE", endDate: d.from },
+      data: { endDate: d.to },
+    });
+    return res.count;
+  }
 }
 
 export const subscriptionRepo = new SubscriptionRepository();

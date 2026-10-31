@@ -9,6 +9,7 @@ vi.mock("../repo", () => ({
     findById: vi.fn(),
     transitionStatus: vi.fn(),
     setPaused: vi.fn(),
+    extendEndDate: vi.fn(),
     listPage: vi.fn(),
   },
 }));
@@ -32,6 +33,7 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
     status: "DRAFT",
     isPaused: false,
     paymentTerms: 0,
+    renewalInterval: "MONTHLY",
     startDate: new Date("2026-11-01T00:00:00.000Z"),
     endDate: new Date("2027-10-31T00:00:00.000Z"),
     nextBillingDate: null,
@@ -45,7 +47,7 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
         quantity: 2,
         unitPrice: 149900,
         product: { name: "Brightloop CRM Suite" },
-        plan: { name: "Starter Monthly", pausable: true },
+        plan: { name: "Starter Monthly", pausable: true, renewable: true },
       },
     ],
     ...overrides,
@@ -250,12 +252,105 @@ describe("subscription transitions (real)", () => {
       NotFoundError,
     );
   });
+});
 
-  it("renew is not supported yet", async () => {
+describe("subscription renew (real)", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("monthly: moves endDate one month ahead and touches nothing else", async () => {
+    const end = new Date("2027-10-01T00:00:00.000Z");
+    const next = new Date("2026-12-01T00:00:00.000Z");
+    const newEnd = new Date("2027-11-01T00:00:00.000Z");
+    repo.findById
+      .mockResolvedValueOnce(
+        makeRecord({ status: "ACTIVE", endDate: end, nextBillingDate: next }) as never,
+      )
+      .mockResolvedValueOnce(
+        makeRecord({ status: "ACTIVE", endDate: newEnd, nextBillingDate: next }) as never,
+      );
+    repo.extendEndDate.mockResolvedValue(1);
+
+    const dto = await subscriptionLifecycle.transition("clsub000000001abcd", "renew");
+
+    expect(repo.extendEndDate).toHaveBeenCalledWith({
+      id: "clsub000000001abcd",
+      from: end,
+      to: newEnd,
+    });
+    expect(repo.transitionStatus).not.toHaveBeenCalled();
+    expect(dto.expiryDate).toBe(newEnd.toISOString());
+    expect(dto.nextBillingDate).toBe(next.toISOString());
+    expect(dto.number).toBe("SUB-2026-ABCD");
+    expect(dto.status).toBe("active");
+  });
+
+  it("annual: moves endDate one year ahead", async () => {
+    const end = new Date("2027-01-01T00:00:00.000Z");
+    repo.findById
+      .mockResolvedValueOnce(
+        makeRecord({ status: "ACTIVE", renewalInterval: "ANNUALLY", endDate: end }) as never,
+      )
+      .mockResolvedValueOnce(
+        makeRecord({
+          status: "ACTIVE",
+          renewalInterval: "ANNUALLY",
+          endDate: new Date("2028-01-01T00:00:00.000Z"),
+        }) as never,
+      );
+    repo.extendEndDate.mockResolvedValue(1);
+
+    await subscriptionLifecycle.transition("clsub000000001abcd", "renew");
+    expect(repo.extendEndDate).toHaveBeenCalledWith({
+      id: "clsub000000001abcd",
+      from: end,
+      to: new Date("2028-01-01T00:00:00.000Z"),
+    });
+  });
+
+  it("cannot renew a subscription that is not active", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "CONFIRMED" }) as never);
     await expect(
       subscriptionLifecycle.transition("clsub000000001abcd", "renew"),
     ).rejects.toBeInstanceOf(BusinessRuleError);
-    expect(repo.findById).not.toHaveBeenCalled();
+    expect(repo.extendEndDate).not.toHaveBeenCalled();
+  });
+
+  it("blocks renew when the plan is not renewable", async () => {
+    const base = makeRecord({ status: "ACTIVE" });
+    const rec = makeRecord({
+      status: "ACTIVE",
+      lines: [{ ...base.lines[0], plan: { name: "No Renew", pausable: true, renewable: false } }],
+    });
+    repo.findById.mockResolvedValue(rec as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "renew"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.extendEndDate).not.toHaveBeenCalled();
+  });
+
+  it("rejects renew when there is no end date", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "ACTIVE", endDate: null }) as never);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "renew"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(repo.extendEndDate).not.toHaveBeenCalled();
+  });
+
+  it("gives a conflict when another request changed the end date first", async () => {
+    repo.findById.mockResolvedValue(makeRecord({ status: "ACTIVE" }) as never);
+    repo.extendEndDate.mockResolvedValue(0);
+    await expect(
+      subscriptionLifecycle.transition("clsub000000001abcd", "renew"),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("renew on an unknown subscription gives not found", async () => {
+    repo.findById.mockResolvedValue(null as never);
+    await expect(subscriptionLifecycle.transition("nope", "renew")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
   });
 });
 
@@ -323,7 +418,7 @@ describe("subscription pause / resume (real)", () => {
     const base = makeRecord({ status: "ACTIVE" });
     const rec = makeRecord({
       status: "ACTIVE",
-      lines: [{ ...base.lines[0], plan: { name: "No Pause", pausable: false } }],
+      lines: [{ ...base.lines[0], plan: { name: "No Pause", pausable: false, renewable: true } }],
     });
     repo.findById.mockResolvedValue(rec as never);
     await expect(

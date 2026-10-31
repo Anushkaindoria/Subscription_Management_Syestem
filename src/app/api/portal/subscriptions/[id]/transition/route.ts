@@ -13,7 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!customerId) return fail("FORBIDDEN", "No customer linked to this account", 403);
 
     if (!isMock) {
-      // Pehle ownership check, phir transition (pause/renew abhi "not supported yet")
+      // Pehle ownership check, phir transition (renew/pause/close ke rules lifecycle mein hain)
       await subscriptionLifecycle.getById(params.id, { customerId });
       const body = await parseAndValidate(req, PortalTransitionSchema);
       return ok(await subscriptionLifecycle.transition(params.id, body.action));
