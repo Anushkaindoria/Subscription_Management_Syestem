@@ -721,7 +721,7 @@ export function CustomerDetail({ customerId }: { customerId: string }) {
               <div className="space-y-3">
                 {notes.map((n) => (
                   <div key={n.id} className="p-4 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
-                    <p className="italic">"{n.content}"</p>
+                    <p className="italic">&quot;{n.content}&quot;</p>
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-amber-200/40 text-xs text-amber-700 dark:text-amber-400">
                       <span>Logged by {n.author}</span>
                       <span>{n.date}</span>
