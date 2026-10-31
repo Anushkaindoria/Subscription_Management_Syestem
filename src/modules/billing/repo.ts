@@ -47,6 +47,7 @@ export class BillingRepository {
     return await db.subscription.findMany({
       where: {
         status: "ACTIVE",
+        isPaused: false,
         nextBillingDate: { lte: asOfDate },
       },
       include: dueInclude,
