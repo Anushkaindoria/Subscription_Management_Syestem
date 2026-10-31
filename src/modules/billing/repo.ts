@@ -127,7 +127,7 @@ export class BillingRepository {
           taxAmount: input.taxAmount,
           discountAmount: input.discountAmount,
           totalAmount: input.totalAmount,
-          dueDate: input.dueDate,
+          dueDate: input.dueDate, discountIds: input.discountIds,
           lines: { create: input.lines },
         },
         select: { id: true, totalAmount: true },
