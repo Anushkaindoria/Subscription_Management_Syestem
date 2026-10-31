@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { DiscountsList } from "@/components/features/discounts/DiscountsList";
 
-export default function Page() {
-  return <PagePlaceholder routeId="discounts" />;
+export default function DiscountsPage() {
+  return <DiscountsList />;
 }

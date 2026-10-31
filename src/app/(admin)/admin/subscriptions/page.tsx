@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { SubscriptionsList } from "@/components/features/subscriptions/SubscriptionsList";
 
-export default function Page() {
-  return <PagePlaceholder routeId="subscriptions-list" />;
+export default function SubscriptionsPage() {
+  return <SubscriptionsList />;
 }

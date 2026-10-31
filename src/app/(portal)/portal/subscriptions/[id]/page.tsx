@@ -1,5 +1,10 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import { PortalSubscriptionDetail } from "@/components/features/portal/PortalSubscriptionDetail";
 
-export default function Page() {
-  return <PagePlaceholder routeId="portal-subscription-detail" />;
+export const metadata = {
+  title: "Subscription Agreement | LoopOS Portal",
+  description: "View line items, renewal terms, and self-service agreement management.",
+};
+
+export default function PortalSubscriptionDetailPage() {
+  return <PortalSubscriptionDetail />;
 }

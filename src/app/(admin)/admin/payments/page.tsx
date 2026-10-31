@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { PaymentsLedger } from "@/components/features/payments/PaymentsLedger";
 
-export default function Page() {
-  return <PagePlaceholder routeId="payments" />;
+export default function PaymentsPage() {
+  return <PaymentsLedger />;
 }

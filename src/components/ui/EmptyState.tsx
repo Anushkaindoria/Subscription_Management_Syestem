@@ -1,21 +1,45 @@
 import React from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "./Button";
+import { Inbox } from "lucide-react";
 
 export interface EmptyStateProps {
   title: string;
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  icon?: React.ReactNode;
+  className?: string;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ title, description, actionLabel, onAction }) => {
+export const EmptyState: React.FC<EmptyStateProps> = ({
+  title,
+  description,
+  actionLabel,
+  onAction,
+  icon,
+  className,
+}) => {
   return (
-    <div className="glass-panel" style={{ padding: "3rem", textAlign: "center" }}>
-      <h3 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>{title}</h3>
-      <p style={{ color: "var(--text-muted, #94A3B8)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>{description}</p>
+    <div
+      className={cn(
+        "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[14px] p-10 sm:p-14 text-center shadow-sm flex flex-col items-center justify-center",
+        className
+      )}
+    >
+      <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-4">
+        {icon || <Inbox className="w-7 h-7" />}
+      </div>
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight mb-1.5">
+        {title}
+      </h3>
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
+        {description}
+      </p>
       {actionLabel && (
-        <button onClick={onAction} style={{ padding: "8px 16px", background: "var(--primary, #4F46E5)", color: "#fff", borderRadius: "8px" }}>
+        <Button onClick={onAction} variant="primary" size="md">
           {actionLabel}
-        </button>
+        </Button>
       )}
     </div>
   );

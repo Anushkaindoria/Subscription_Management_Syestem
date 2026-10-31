@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { StaffManagement } from "@/components/features/staff/StaffManagement";
 
-export default function Page() {
-  return <PagePlaceholder routeId="staff" />;
+export default function StaffPage() {
+  return <StaffManagement />;
 }

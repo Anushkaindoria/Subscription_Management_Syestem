@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import React from "react";
+import { BillingRunConsole } from "@/components/features/billing/BillingRunConsole";
 
-export default function Page() {
-  return <PagePlaceholder routeId="billing-run" />;
+export default function BillingRunPage() {
+  return <BillingRunConsole />;
 }

@@ -1,5 +1,10 @@
-import { PagePlaceholder } from "@/components/features/_shared/PagePlaceholder";
+import { PortalProfile } from "@/components/features/portal/PortalProfile";
 
-export default function Page() {
-  return <PagePlaceholder routeId="portal-profile" />;
+export const metadata = {
+  title: "Profile & Security | LoopOS Portal",
+  description: "Manage company legal entity details and customer portal login credentials.",
+};
+
+export default function PortalProfilePage() {
+  return <PortalProfile />;
 }
