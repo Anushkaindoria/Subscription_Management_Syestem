@@ -4,10 +4,10 @@
  */
 
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { Prisma, TaxRule } from "@prisma/client";
 
 const dueInclude = Prisma.validator<Prisma.SubscriptionInclude>()({
-  lines: { include: { product: true, variant: true, plan: true } },
+  lines: { include: { product: true, variant: true, plan: true, discount: true } },
   customer: true,
 });
 
@@ -24,6 +24,7 @@ export interface NewInvoiceInput {
   taxAmount: number;
   discountAmount: number;
   totalAmount: number;
+  discountIds: string[];
   lines: {
     description: string;
     quantity: number;
@@ -32,6 +33,13 @@ export interface NewInvoiceInput {
     discountAmount: number;
     totalAmount: number;
   }[];
+}
+
+/** Thrown inside the transaction when a discount hit its limit; the whole transaction rolls back. */
+export class DiscountLimitError extends Error {
+  constructor(public discountId: string) {
+    super(`Discount ${discountId} is exhausted or inactive`);
+  }
 }
 
 export class BillingRepository {
@@ -43,6 +51,10 @@ export class BillingRepository {
       },
       include: dueInclude,
     });
+  }
+
+  async findTaxRuleByCode(code: string): Promise<TaxRule | null> {
+    return await db.taxRule.findFirst({ where: { code, active: true } });
   }
 
   async checkInvoiceExists(
@@ -81,12 +93,28 @@ export class BillingRepository {
     return `${prefix}${String(lastSeq + 1).padStart(4, "0")}`;
   }
 
-  /** One transaction: create invoice + lines AND advance nextBillingDate. All or nothing. */
+  /**
+   * One transaction: consume discount usage + create invoice and lines + advance nextBillingDate.
+   * All or nothing.
+   */
   async createInvoiceAndAdvance(
     input: NewInvoiceInput,
     year: number,
   ): Promise<{ id: string; totalAmount: number }> {
     return await db.$transaction(async (tx) => {
+      // Consume discount usage safely: compare-and-swap on usageCount
+      for (const discountId of input.discountIds) {
+        const d = await tx.discount.findUnique({ where: { id: discountId } });
+        if (!d || !d.active || (d.maxUsageLimit !== null && d.usageCount >= d.maxUsageLimit)) {
+          throw new DiscountLimitError(discountId);
+        }
+        const res = await tx.discount.updateMany({
+          where: { id: discountId, usageCount: d.usageCount },
+          data: { usageCount: { increment: 1 } },
+        });
+        if (res.count === 0) throw new DiscountLimitError(discountId);
+      }
+
       const invoiceNumber = await this.nextInvoiceNumber(tx, year);
       const invoice = await tx.invoice.create({
         data: {
