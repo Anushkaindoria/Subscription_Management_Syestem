@@ -28,7 +28,34 @@ const MOCK_CUSTOMER_USER: SessionUserDTO = {
 export class AuthService {
   async login(dto: LoginDTO): Promise<AuthSession> {
     if (config.isMockApi) {
-      const user = dto.email.includes("admin") ? MOCK_ADMIN_USER : MOCK_CUSTOMER_USER;
+      const emailLower = (dto.email || "").toLowerCase();
+      let user: SessionUserDTO = MOCK_ADMIN_USER;
+
+      if (
+        emailLower.includes("customer") ||
+        emailLower.includes("portal") ||
+        emailLower.includes("acme") ||
+        emailLower.includes("client")
+      ) {
+        user = {
+          ...MOCK_CUSTOMER_USER,
+          email: dto.email,
+        };
+      } else if (emailLower.includes("staff") || emailLower.includes("aman")) {
+        user = {
+          id: "usr_mock_staff",
+          email: dto.email,
+          name: "Aman Verma (Staff)",
+          role: "staff",
+          customerId: null,
+        };
+      } else {
+        user = {
+          ...MOCK_ADMIN_USER,
+          email: dto.email,
+        };
+      }
+
       return {
         token: `mock_jwt_token_${user.id}`,
         user,

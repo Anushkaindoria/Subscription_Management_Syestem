@@ -33,7 +33,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantClasses = {
       primary:
-        "bg-[#4F46E5] hover:bg-[#4338CA] active:bg-[#3730A3] text-white shadow-sm font-semibold border border-transparent",
+        "bg-primary hover:bg-primary-hover text-primary-foreground shadow-sm font-semibold border border-transparent",
       secondary:
         "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm font-medium",
       danger:
@@ -59,7 +59,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
         ) : (
           leftIcon
         )}

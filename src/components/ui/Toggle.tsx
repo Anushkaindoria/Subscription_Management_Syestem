@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 
 export interface ToggleProps {
   label?: string;
+  description?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -11,6 +12,7 @@ export interface ToggleProps {
 
 export const Toggle: React.FC<ToggleProps> = ({
   label,
+  description,
   checked,
   onChange,
   disabled = false,
@@ -19,12 +21,12 @@ export const Toggle: React.FC<ToggleProps> = ({
   return (
     <label
       className={cn(
-        "inline-flex items-center gap-2 cursor-pointer select-none",
+        "inline-flex items-start gap-2.5 cursor-pointer select-none",
         disabled && "cursor-not-allowed opacity-50",
         className,
       )}
     >
-      <div className="relative inline-flex items-center">
+      <div className="relative inline-flex items-center mt-0.5 shrink-0">
         <input
           type="checkbox"
           checked={checked}
@@ -39,10 +41,19 @@ export const Toggle: React.FC<ToggleProps> = ({
           )}
         />
       </div>
-      {label && (
-        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-          {label}
-        </span>
+      {(label || description) && (
+        <div className="flex flex-col">
+          {label && (
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              {label}
+            </span>
+          )}
+          {description && (
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              {description}
+            </span>
+          )}
+        </div>
       )}
     </label>
   );

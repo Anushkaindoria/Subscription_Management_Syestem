@@ -8,7 +8,31 @@ export async function POST(req: NextRequest) {
     await applyMockDelay();
     const body = await parseAndValidate(req, LoginRequestSchema);
     const session = await authService.login(body);
-    return ok(session);
+    const res = ok(session);
+
+    // Set cookies so middleware and browser recognize authenticated session
+    res.cookies.set("session_token", session.token, {
+      path: "/",
+      httpOnly: false,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+    res.cookies.set("session_role", session.user.role, {
+      path: "/",
+      httpOnly: false,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    if (session.user.customerId) {
+      res.cookies.set("session_customer_id", session.user.customerId, {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
+
+    return res;
   } catch (err: any) {
     return fail("LOGIN_FAILED", err.message || "Invalid credentials", 401, err.fields);
   }

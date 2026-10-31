@@ -66,6 +66,13 @@ export const STATUS_PILL_CONFIG: Record<string, StatusPillConfig> = {
     border: "rgba(239, 68, 68, 0.2)",
     iconDotColor: "#ef4444",
   },
+  reconciled: {
+    label: "Reconciled",
+    color: "#16a34a",
+    bg: "rgba(22, 163, 74, 0.12)",
+    border: "rgba(22, 163, 74, 0.25)",
+    iconDotColor: "#16a34a",
+  },
 
   // Roles
   admin: {

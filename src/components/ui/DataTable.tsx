@@ -5,7 +5,7 @@ import { Skeleton } from "./Skeleton";
 
 export interface Column<T> {
   key: string;
-  header: string;
+  header: React.ReactNode;
   render?: (item: T) => React.ReactNode;
   align?: "left" | "center" | "right";
   className?: string;
@@ -121,7 +121,7 @@ export function DataTable<T extends Record<string, any>>({
           >
             {columns.map((col) => (
               <div key={col.key} className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-slate-500 uppercase">{col.header}:</span>
+                <span className="font-semibold text-slate-500 uppercase">{typeof col.header === "string" ? col.header : col.key}:</span>
                 <span className="text-slate-900 dark:text-white font-medium text-right">
                   {col.render ? col.render(row) : row[col.key] ?? "—"}
                 </span>
