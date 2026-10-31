@@ -1,0 +1,51 @@
+{
+  "root": true,
+  "ignorePatterns": ["design/**", ".next/**", "node_modules/**"],
+  "extends": ["next/core-web-vitals", "prettier"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/modules/*/*", "@/modules/*/**/*"],
+            "message": "Deep imports into module internals are forbidden. Import ONLY from the module public API: '@/modules/<name>'."
+          },
+          {
+            "group": ["../**/modules/*/*", "../../modules/*/*", "../../../modules/*/*"],
+            "message": "Relative imports crossing module boundaries are forbidden. Use '@/modules/<name>'."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/app/**/*", "src/components/**/*"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/modules/*/*", "@/modules/*/**/*"],
+                "message": "Deep imports into module internals are forbidden. Import ONLY from the module public API: '@/modules/<name>'."
+              },
+              {
+                "group": [
+                  "@prisma/client",
+                  "@prisma/client/*",
+                  "prisma",
+                  "@/lib/db",
+                  "*/**/repo",
+                  "*/**/repo.*"
+                ],
+                "message": "UI (src/app, src/components) must NEVER import Prisma or module repositories directly. Route handlers must call module services; UI components must use contracts or API endpoints."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

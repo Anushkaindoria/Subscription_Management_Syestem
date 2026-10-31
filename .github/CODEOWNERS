@@ -1,0 +1,83 @@
+# ==============================================================================
+# LoopOS - GitHub CODEOWNERS
+# ==============================================================================
+# Maps files and folders to module owners.
+#
+# Dev A: Billing, Data, Invoices, Tax, Discounts, Reports, Ask, Settings, Lib (@devA)
+# Dev B: Platform, Auth, RBAC, Catalog, Subscriptions, Payments, Customers, Staff (@devB)
+# Dev C: Frontend UI, Layouts, Components, Config, Mocks, Stitch Design Import (@devC)
+# ==============================================================================
+
+# Default fallback
+* @devA @devB @devC
+
+# Core Configurations
+package.json @devA @devB @devC
+tsconfig.json @devA @devB @devC
+.eslintrc.json @devA @devB @devC
+docker-compose.yml @devA
+Makefile @devA @devB
+
+# Database & Schema (Owner A)
+/prisma/schema.prisma @devA
+/prisma/migrations/ @devA
+/prisma/seed/seed-billing.ts @devA
+/prisma/seed/seed-bulk.ts @devA
+/prisma/seed/seed-catalog.ts @devB
+
+# Shared Infrastructure (Owner A)
+/src/lib/ @devA
+/scripts/ @devA
+
+# Shared Contracts (All Developers - coordinate changes!)
+/src/contracts/ @devA @devB @devC
+
+# Business Modules - Dev A (Billing, Invoices, Tax, Discounts, Reports, Ask, Settings)
+/src/modules/billing/ @devA
+/src/modules/tax/ @devA
+/src/modules/discounts/ @devA
+/src/modules/invoices/ @devA
+/src/modules/reports/ @devA
+/src/modules/ask/ @devA
+/src/modules/settings/ @devA
+
+# Business Modules - Dev B (Auth, RBAC, Catalog, Subscriptions, Payments, Customers, Staff)
+/src/modules/auth/ @devB
+/src/modules/rbac/ @devB
+/src/modules/catalog/ @devB
+/src/modules/subscriptions/ @devB
+/src/modules/payments/ @devB
+/src/modules/customers/ @devB
+/src/modules/staff/ @devB
+
+# Next.js API Route Handlers (Mapped to domain backend owner)
+/src/app/api/_lib/ @devA @devB
+/src/app/api/auth/ @devB
+/src/app/api/products/ @devB
+/src/app/api/plans/ @devB
+/src/app/api/templates/ @devB
+/src/app/api/subscriptions/ @devB
+/src/app/api/customers/ @devB
+/src/app/api/invoices/ @devA
+/src/app/api/billing/ @devA
+/src/app/api/payments/ @devB
+/src/app/api/discounts/ @devA
+/src/app/api/taxes/ @devA
+/src/app/api/staff/ @devB
+/src/app/api/reports/ @devA
+/src/app/api/ask/ @devA
+/src/app/api/settings/ @devA
+/src/app/api/portal/ @devA @devB
+
+# Frontend UI & Design System - Dev C
+/src/app/(public)/ @devC
+/src/app/(admin)/ @devC
+/src/app/(portal)/ @devC
+/src/components/ @devC
+/src/config/ @devC
+/src/mocks/ @devC
+/design/stitch/ @devC
+/docs/ @devC
+
+# End-to-End Tests
+/tests/ @devA @devB @devC
