@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, paginate, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import { ok, assertAuth, paginate, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { RecordPaymentSchema, Payment } from "@/contracts/payment";
 
 const MOCK_PAYMENTS: Payment[] = [
@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
     const page = parseInt(req.nextUrl.searchParams.get("page") || "1", 10);
     const pageSize = parseInt(req.nextUrl.searchParams.get("pageSize") || "25", 10);
     return ok(paginate(MOCK_PAYMENTS, page, pageSize));
-  } catch (err: any) {
-    return fail(err.code || "ERROR", err.message, 500);
+  } catch (err) {
+    return handleError(err);
   }
 }
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     };
     return ok(payment, 201);
-  } catch (err: any) {
-    return fail(err.code || "RECORD_PAYMENT_FAILED", err.message, 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

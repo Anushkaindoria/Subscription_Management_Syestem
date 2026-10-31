@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, paginate, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import { ok, assertAuth, paginate, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { CreateSubscriptionSchema } from "@/contracts/subscription";
 import { MOCK_SUBSCRIPTIONS } from "@/mocks/subscriptions";
 
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     let items = MOCK_SUBSCRIPTIONS;
     if (status) items = items.filter((s) => s.status === status);
     return ok(paginate(items, page, pageSize));
-  } catch (err: any) {
-    return fail(err.code || "ERROR", err.message, err.status || 500);
+  } catch (err) {
+    return handleError(err);
   }
 }
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       nextBillingDate: null,
     };
     return ok(sub, 201);
-  } catch (err: any) {
-    return fail(err.code || "CREATE_SUB_FAILED", err.message, err.status || 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

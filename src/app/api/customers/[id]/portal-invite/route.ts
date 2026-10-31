@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay } from "@/app/api/_lib/handler";
+import { ok, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       customerId: params.id,
       inviteUrl: `/portal?token=invite_${params.id}_${Date.now()}`,
     });
-  } catch (err: any) {
-    return fail(err.code || "INVITE_FAILED", err.message, 400);
+  } catch (err) {
+    return handleError(err);
   }
 }

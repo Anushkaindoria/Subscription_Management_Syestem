@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import { ok, fail, assertAuth, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { PortalPayInvoiceSchema } from "@/contracts/portal";
 import { MOCK_INVOICES } from "@/mocks/invoices";
 
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       invoiceStatus: "paid",
       remainingBalanceMinor: 0,
     });
-  } catch (err: any) {
-    return fail(err.code || "PAYMENT_FAILED", err.message, 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

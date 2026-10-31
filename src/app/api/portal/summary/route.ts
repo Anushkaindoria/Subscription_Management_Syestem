@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay } from "@/app/api/_lib/handler";
+import { ok, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
 import { MOCK_INVOICES } from "@/mocks/invoices";
 import { MOCK_SUBSCRIPTIONS } from "@/mocks/subscriptions";
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       recentInvoices: invs,
       subscriptions: subs,
     });
-  } catch (err: any) {
-    return fail(err.code || "UNAUTHORIZED", err.message, err.status || 401);
+  } catch (err) {
+    return handleError(err);
   }
 }

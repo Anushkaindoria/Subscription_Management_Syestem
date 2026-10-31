@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay, parseAndValidate } from "@/app/api/_lib/handler";
+import { ok, assertAuth, applyMockDelay, parseAndValidate, handleError } from "@/app/api/_lib/handler";
 import { SubscriptionTransitionSchema } from "@/contracts/subscription";
 import { MOCK_SUBSCRIPTIONS } from "@/mocks/subscriptions";
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const nextStatus = actionToStatus[body.action] || sub.status;
     return ok({ ...sub, status: nextStatus, lastAction: body.action });
-  } catch (err: any) {
-    return fail(err.code || "TRANSITION_FAILED", err.message, 400, err.fields);
+  } catch (err) {
+    return handleError(err);
   }
 }

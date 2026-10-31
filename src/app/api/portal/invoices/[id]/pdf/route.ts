@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ok, fail, assertAuth, applyMockDelay } from "@/app/api/_lib/handler";
+import { ok, fail, assertAuth, applyMockDelay, handleError } from "@/app/api/_lib/handler";
 import { MOCK_INVOICES } from "@/mocks/invoices";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       invoiceNumber: inv.number,
       downloadReady: true,
     });
-  } catch (err: any) {
-    return fail(err.code || "PDF_FAILED", err.message, 404);
+  } catch (err) {
+    return handleError(err);
   }
 }
